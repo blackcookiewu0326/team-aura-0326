@@ -20,7 +20,9 @@ export const LoginView = ({ onLogin, loading, onInitialize }) => {
         <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
         <div className="text-6xl mb-4">🌀</div>
         <h1 className="text-2xl font-black text-slate-800 mb-1">Team Aura<br />波導戰隊</h1>
-        <p className="text-gray-400 text-xs mb-6">無帳密者請找蘭斯</p>
+        <p className="text-red-400 text-xs mb-6">* 帳號第一碼若為英文，請一律改為小寫</p>
+        <p className="text-gray-400 text-xs mb-6">"(密碼大小寫按照你原先的設定，不須變動)"</p>
+        <p className="text-gray-400 text-xs mb-6">* 無帳密、無法登入、忘記密碼等疑難雜症請直接找蘭斯</p>
         
         {/* 優化：使用 form 標籤，提升手機輸入體驗 */}
         <form onSubmit={handleLogin} className="space-y-3 mb-6">
