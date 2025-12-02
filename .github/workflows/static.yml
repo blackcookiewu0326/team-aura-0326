@@ -44,33 +44,55 @@ jobs:
          VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
    
      # ======================================================
-     # ▼▼▼ 修改後的版本號生成腳本 (強制單行 + 台北時間) ▼▼▼
+     # ▼▼▼ 修正版：強制以「換行符號」切割取第一行 ▼▼▼
      # ======================================================
      - name: Generate Version JSON
        run: |
-         # 1. 確保 dist 資料夾存在
-         mkdir -p dist
+         node -e '
+           const fs = require("fs");
+           const { execSync } = require("child_process");
 
 
-         # 2. 抓取 Commit 訊息 - 改用 %B (完整 Body) 取第一行
-         # 為什麼改用 %B？因為 %s 有時會包含被自動合併的標題，
-         # 使用 raw body (%B) 配合 head -n 1 可以保證只抓到最上面那一列文字。
-         COMMIT_MSG=$(git log -1 --pretty=%B | head -n 1 | sed 's/\\/\\\\/g' | sed 's/"/\\"/g')
-        
-         # 3. 取得目前時間 (Asia/Taipei)
-         # 使用 TZ 環境變數來設定時區，格式：YYYY-MM-DD HH:MM:SS
-         BUILD_DATE=$(TZ='Asia/Taipei' date +'%Y-%m-%d %H:%M:%S')
+           if (!fs.existsSync("dist")) fs.mkdirSync("dist");
 
 
-         # 4. 寫入 JSON
-         echo '{ "version": "'"$COMMIT_MSG"'", "hash": "'"${{ github.sha }}"'", "date": "'"$BUILD_DATE"'" }' > dist/version.json
-        
-         # 5. 在 Log 印出來確認 (Debug 用，您可以在 Action logs 看到結果)
-         echo "Version set to: $COMMIT_MSG"
-         echo "Date set to: $BUILD_DATE"
+           try {
+             // 1. 抓取完整內容 (Raw Body)
+             const fullBody = execSync("git log -1 --pretty=%B").toString().trim();
+            
+             // 2. 強制以換行符號 (\n) 切割，只取第一行作為版本標題
+             // 這樣就算 Commit 內容是一大坨，也只會抓到第一句
+             const subject = fullBody.split("\n")[0].trim();
+
+
+             // 3. 取得台北時間
+             const date = new Date().toLocaleString("zh-TW", {
+               timeZone: "Asia/Taipei",
+               hour12: false
+             });
+
+
+             const versionData = {
+               version: subject,      // 乾淨的第一行
+               notes: fullBody,       // 完整內容 (給彈窗用)
+               hash: "${{ github.sha }}",
+               date: date
+             };
+
+
+             fs.writeFileSync("dist/version.json", JSON.stringify(versionData));
+             console.log("Version set to:", subject);
+            
+           } catch (error) {
+             console.error("Error generating version json:", error);
+             process.exit(1);
+           }
+         '
      # ======================================================
      # ▲▲▲ 修改結束 ▲▲▲
      # ======================================================
+
+
   
      - name: Upload artifact
        uses: actions/upload-pages-artifact@v3
