@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { auth, db } from '../services/firebase';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore'; // 改用 getDoc 直接讀取
+import { doc, getDoc } from 'firebase/firestore';
 import { useToast } from '../context/ToastContext';
 
 
@@ -13,44 +13,54 @@ const toEmail = (username) => {
 
 export const useAuth = () => {
  const [currentUser, setCurrentUser] = useState(JSON.parse(localStorage.getItem('pogo_current_user') || 'null'));
- const [loading, setLoading] = useState(true);
+ const [loading, setLoading] = useState(true); // 初始 loading 設為 true 以避免畫面閃爍
  const { showToast } = useToast();
 
 
  useEffect(() => {
    const unsubscribe = onAuthStateChanged(auth, async (user) => {
      if (user) {
+      
        try {
-           // 修改重點：直接使用 user.uid 來讀取 users 集合中的對應文件
-           // 這要求 Firestore 中的 users 文件 ID 必須與 Auth UID 一致
-           const userDocRef = doc(db, "users", user.uid);
-           const userDocSnap = await getDoc(userDocRef);
+           const { collection, query, where, getDocs } = await import('firebase/firestore');
+           const q = query(collection(db, "users"), where("email", "==", user.email));
+           const querySnapshot = await getDocs(q);
 
 
-           if (userDocSnap.exists()) {
-             const userData = userDocSnap.data();
+           if (!querySnapshot.empty) {
+             const userData = querySnapshot.docs[0].data();
              const fullUser = {
                ...userData,
-               uid: user.uid, // 使用 Auth 的 UID
-               // email: user.email, // 不再從 Firestore 讀取 email，直接用 Auth 的
-               // 如果 Firestore 裡沒有 email 欄位了，這裡也不會洩漏
-               firestoreId: user.uid,
+               uid: userData.username, // 這裡維持原本邏輯，用 username 當 uid
+               email: user.email,
+               firestoreId: querySnapshot.docs[0].id,
+               // 確保 isAdmin 欄位存在
                isAdmin: !!userData.isAdmin
              };
              setCurrentUser(fullUser);
              localStorage.setItem('pogo_current_user', JSON.stringify(fullUser));
            } else {
-              console.warn("User data not found in Firestore (UID match failed).");
-              // 如果找不到，可能是舊帳號結構 (Doc ID != UID)
-              // 這裡可以做一個 fallback 或者是提示管理員遷移資料
-              showToast("找不到使用者資料，請聯繫管理員確認帳號設定", "error");
-              // 暫時登出以策安全，或是給予一個只有基本權限的 user 物件
-              await signOut(auth);
-              setCurrentUser(null);
+              // 雖然登入成功 (密碼對)，但資料庫沒這個人 (或被 Rules 擋住)
+              console.warn("User data not found or permission denied.");
+              // 選擇性：是否要強制登出？
+              // await signOut(auth);
+              // setCurrentUser(null);
+              // showToast("無法讀取使用者資料，請聯繫管理員", "error");
+             
+              // 暫時允許登入，但可能沒權限做事
+              const fallbackUser = {
+                  uid: user.email.split('@')[0],
+                  email: user.email,
+                  username: user.email.split('@')[0],
+                  isAdmin: false,
+                  points: 0
+              };
+              setCurrentUser(fallbackUser);
            }
        } catch (error) {
            console.error("Auth Error:", error);
-           showToast("登入發生錯誤", "error");
+           // 這裡通常是 Permission Denied
+           showToast("權限不足或登入錯誤", "error");
            await signOut(auth);
            setCurrentUser(null);
        }
