@@ -1,454 +1,456 @@
 import { useState } from 'react';
 import { db, storage } from '../services/firebase';
-import {
- collection, addDoc, updateDoc, deleteDoc, doc,
- serverTimestamp, setDoc, writeBatch, getDocs, query, where, getDoc, arrayUnion
-} from 'firebase/firestore';
+import { collection, addDoc, updateDoc, deleteDoc, doc, serverTimestamp, setDoc, writeBatch, getDocs, query, where, getDoc, arrayUnion } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useToast } from '../context/ToastContext';
 import { compressImage } from '../utils/compressor';
 
 
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+
 const uploadImages = async (fileList) => {
- const urls = [];
- for (const file of fileList) {
-   try {
-     const fileToUpload = await compressImage(file);
-     const storageRef = ref(storage, `uploads/${Date.now()}_${fileToUpload.name}`);
-     await uploadBytes(storageRef, fileToUpload);
-     const url = await getDownloadURL(storageRef);
-     urls.push(url);
-   } catch (error) {
-     console.error("Upload failed:", error);
-   }
- }
- return urls;
+const urls = [];
+for (const file of fileList) {
+  try {
+    const fileToUpload = await compressImage(file);
+    const storageRef = ref(storage, `uploads/${Date.now()}_${fileToUpload.name}`);
+    await uploadBytes(storageRef, fileToUpload);
+    const url = await getDownloadURL(storageRef);
+    urls.push(url);
+  } catch (error) { console.error("Upload failed:", error); }
+}
+return urls;
 };
 
 
 export const useAdmin = (currentUser, seasonName, users, roles = []) => {
- const { showToast } = useToast();
- const [adminLoading, setAdminLoading] = useState(false);
-
-
- const execute = async (fn, successMsg) => {
-   setAdminLoading(true);
-   try {
-     const result = await fn();
-     if (successMsg) showToast(successMsg);
-     return result !== false;
-   } catch (e) {
-     console.error(e);
-     showToast(e.message || "操作失敗", "error");
-     return false;
-   } finally {
-     setAdminLoading(false);
-   }
- };
-
-
- const clearCollection = async (collectionName) => {
-   const q = query(collection(db, collectionName));
-   const snapshot = await getDocs(q);
-   const batch = writeBatch(db);
-   let count = 0;
-  
-   snapshot.docs.forEach((doc) => {
-     batch.delete(doc.ref);
-     count++;
-   });
-  
-   if (count > 0) {
-     await batch.commit();
-     console.log(`Cleared ${count} docs from ${collectionName}`);
-   }
- };
-
-
- const getValidSeason = () => {
-     if (!seasonName || seasonName === '載入中...' || seasonName === '未設定賽季') {
-         throw new Error("系統尚未載入賽季資訊，請稍後再試");
-     }
-     return seasonName;
- };
-
-
- // 計算加成倍率 (百分比相加邏輯)
- const calculateMultiplier = (userRoleCodes, allRoles = roles) => {
-     const safeRoles = allRoles || [];
-     const userRoles = userRoleCodes || [];
-     const activeRoles = safeRoles.filter(r => userRoles.includes(r.code));
-    
-     let totalExtra = 0;
-    
-     activeRoles.forEach(r => {
-         const rate = Number(r.multiplier) || 1;
-         totalExtra += (rate - 1);
-     });
-
-
-     return Math.max(0, 1 + totalExtra);
- };
-
-
- // 核心邏輯：只重新計算使用者總分，不修改 submission
- const recalculateUserPoints = async (userId, userDocId, currentSeason, currentRoles = roles) => {
-     // 1. 找出該使用者本賽季所有 approved 的提交
-     const q = query(
-         collection(db, "submissions"),
-         where("uid", "==", userId),
-         where("season", "==", currentSeason),
-         where("status", "==", "approved")
-     );
-     const snapshot = await getDocs(q);
-    
-     // 2. 取得使用者最新的 roles
-     const userDocSnap = await getDoc(doc(db, "users", userDocId));
-     if (!userDocSnap.exists()) return;
-    
-     const userData = userDocSnap.data();
-     const multiplier = calculateMultiplier(userData.roles, currentRoles);
-
-
-     let totalBasePoints = 0;
-
-
-     // 3. 加總原始分數
-     // 這裡假設 submissions 中的 points 欄位現在儲存的就是原始分
-     snapshot.forEach(doc => {
-         const data = doc.data();
-         // 優先使用 basePoints，如果沒有則使用 points (相容舊資料)
-         const points = data.basePoints !== undefined ? Number(data.basePoints) : Number(data.points);
-         totalBasePoints += (points || 0);
-     });
-
-
-     // 4. 計算加成後的總分 (總分 = 總原始分 * 倍率 -> 四捨五入)
-     // 修正：根據您的需求，是每一筆乘完再加總，還是加總後乘？
-     // 您之前的需求是「四捨五入的小數點可能會影響之後加總的分數」，所以我們維持逐筆計算
-     // 但為了 O(n) 效率且不讀寫 submission，我們可以在這裡模擬逐筆計算
-    
-     let newTotalPoints = 0;
-     snapshot.forEach(doc => {
-         const data = doc.data();
-         const base = data.basePoints !== undefined ? Number(data.basePoints) : Number(data.points);
-         // 這裡直接計算最終得分並累加，但不寫回 submission
-         newTotalPoints += Math.round(base * multiplier);
-     });
-    
-     // 5. 只更新使用者總分
-     await updateDoc(doc(db, "users", userDocId), { points: newTotalPoints });
-    
-     console.log(`Recalculated for ${userId}: Base=${totalBasePoints}, Final=${newTotalPoints} (x${multiplier})`);
- };
-
-
- const actions = {
-   addTask: (taskData) => execute(async () => {
-     const currentSeason = getValidSeason();
-     await addDoc(collection(db, "tasks"), {
-         ...taskData,
-         id: `t_${Date.now()}`,
-         season: currentSeason,
-         createdAt: serverTimestamp()
-     });
-   }, "任務新增成功"),
-
-
-   deleteTask: (firestoreId) => execute(async () => {
-     if (!firestoreId || typeof firestoreId !== 'string') throw new Error("無效的任務 ID");
-     await deleteDoc(doc(db, "tasks", firestoreId));
-   }, "已刪除"),
-
-
-   submitTask: (data) => execute(async () => {
-     const currentSeason = getValidSeason();
-     let imageUrls = [];
-     if (data.rawFiles?.length > 0) imageUrls = await uploadImages(data.rawFiles);
-    
-     const basePoints = data.task.type === 'fixed' ? (Number(data.task.points) || 0) : 0;
-
-
-     await addDoc(collection(db, "submissions"), {
-       id: `s_${Date.now()}`, uid: currentUser.uid, username: currentUser.username,
-       taskId: data.task.id, taskTitle: data.task.title,
-       points: basePoints, // 預設存原始分
-       basePoints: basePoints,
-       status: 'pending', proof: data.proof || '無備註', timestamp: new Date().toISOString(),
-       images: JSON.stringify(imageUrls), week: data.task.week, season: currentSeason
-     });
-   }, "提交成功"),
-
-
-   withdraw: (firestoreId) => execute(async () => {
-     if (!firestoreId || typeof firestoreId !== 'string') throw new Error("無效的提交 ID");
-     await deleteDoc(doc(db, "submissions", firestoreId));
-   }, "已撤回"),
-
-
-   // 審核邏輯更新：只更新狀態與原始分，不計算加成寫入
-   review: (sub, action, points, statusOverride) => execute(async () => {
-       if (!sub || !sub.firestoreId) throw new Error("無效的提交紀錄");
-
-
-       const newStatus = statusOverride || (action === 'approve' ? 'approved' : 'rejected');
-       // 这里的 points 是管理員輸入的原始分
-       let basePoints = Number(points) || 0;
-      
-       const user = users.find(u => u.uid === sub.uid);
-       if (!user || !user.firestoreId) return;
-
-
-       const subRef = doc(db, "submissions", sub.firestoreId);
-      
-       // 更新 submission：points 欄位現在只存原始分
-       await updateDoc(subRef, {
-           status: newStatus,
-           points: basePoints, // points 現在等於 basePoints
-           basePoints: basePoints
-       });
-      
-       // 觸發該使用者的總分重算
-       // 注意：這是非同步的，我們等待它完成以確保 UI 總分即時更新
-       const currentSeason = getValidSeason();
-       await recalculateUserPoints(sub.uid, user.firestoreId, currentSeason);
-
-
-   }, "操作成功"),
-
-
-   addAnnouncement: (title, content, rawFiles = []) => execute(async () => {
-       const currentSeason = getValidSeason();
-       let imageUrls = [];
-       if (rawFiles.length > 0) imageUrls = await uploadImages(rawFiles);
-       await addDoc(collection(db, "announcements"), {
-           id: `a_${Date.now()}`, title, content, author: currentUser.username,
-           timestamp: new Date().toISOString(), images: JSON.stringify(imageUrls), season: currentSeason
-       });
-   }, "公告已發佈"),
-
-
-   updateAnnouncement: (item, title, content, rawFiles = []) => execute(async () => {
-       if (!item?.firestoreId) throw new Error("無效的公告 ID");
-       let imageUrls = [];
-       let existingImages = [];
-       try { existingImages = JSON.parse(item.images || '[]'); } catch(e){}
-       if (rawFiles?.length > 0) imageUrls = await uploadImages(rawFiles);
-       const finalImages = [...existingImages, ...imageUrls];
-       await updateDoc(doc(db, "announcements", item.firestoreId), { title, content, images: JSON.stringify(finalImages) });
-   }, "公告已更新"),
-
-
-   deleteAnnouncement: (firestoreId) => execute(async () => {
-       if (!firestoreId) throw new Error("無效的公告 ID");
-       await deleteDoc(doc(db, "announcements", firestoreId));
-   }),
-
-
-   addGame: (data) => execute(async () => {
-       await addDoc(collection(db, "games"), { ...data, id: `g_${Date.now()}` });
-   }, "遊戲已新增"),
-
-
-   updateGame: (item, data) => execute(async () => {
-       if (!item?.firestoreId) throw new Error("無效的遊戲 ID");
-       await updateDoc(doc(db, "games", item.firestoreId), data);
-   }, "遊戲已更新"),
-
-
-   deleteGame: (firestoreId) => execute(async () => {
-       if (!firestoreId) throw new Error("無效的遊戲 ID");
-       await deleteDoc(doc(db, "games", firestoreId));
-   }),
-
-
-   addRole: (data) => execute(async () => {
-       if (!data.code || !data.label) throw new Error("代號與暱稱必填");
-       const safeRoles = roles || [];
-       const exists = safeRoles.some(r => r.code === data.code);
-       if (exists) throw new Error("代號已存在");
-
-
-       await addDoc(collection(db, "roles"), {
-           ...data,
-           multiplier: Number(data.multiplier) || 1
-       });
-   }, "身分組已新增"),
-
-
-   // 更新身分組邏輯：更新後只重算 user points
-   updateRole: (id, data) => execute(async () => {
-       if (!id) throw new Error("無效的 ID");
-      
-       await updateDoc(doc(db, "roles", id), {
-           ...data,
-           multiplier: Number(data.multiplier) || 1
-       });
-
-
-       const targetRole = roles.find(r => r.firestoreId === id);
-       const codeToFind = targetRole ? targetRole.code : data.code;
-
-
-       if (codeToFind) {
-            const currentSeason = getValidSeason();
-            const updatedRoles = roles.map(r => r.firestoreId === id ? { ...r, ...data, multiplier: Number(data.multiplier) || 1 } : r);
-
-
-            const affectedUsers = users.filter(u => (u.roles || []).includes(codeToFind));
-           
-            // 這裡只會更新 User 的 points，不會遍歷更新 submissions
-            for (const user of affectedUsers) {
-                await recalculateUserPoints(user.uid, user.firestoreId, currentSeason, updatedRoles);
-            }
-            if (affectedUsers.length > 0) {
-                showToast(`已重新計算 ${affectedUsers.length} 位使用者的總分`);
-            }
-       }
-
-
-   }, "身分組已更新"),
-
-
-   deleteRole: (id) => execute(async () => {
-       if (!id) throw new Error("無效的 ID");
-       await deleteDoc(doc(db, "roles", id));
-   }, "身分組已刪除"),
-
-
-   updateUserRoles: (userId, newRoles) => execute(async () => {
-       const user = users.find(u => u.uid === userId);
-       if (!user) throw new Error("找不到使用者");
-      
-       await updateDoc(doc(db, "users", user.firestoreId), { roles: newRoles });
-      
-       const currentSeason = getValidSeason();
-       await recalculateUserPoints(userId, user.firestoreId, currentSeason);
-      
-   }, "使用者身分已更新"),
-
-
-   updateSeasonGoal: (newGoal, newTitle) => execute(async () => {
-       await setDoc(doc(db, "system", "config"), {
-           seasonGoal: Number(newGoal),
-           seasonGoalTitle: newTitle
-       }, { merge: true });
-   }, "目標設定已更新"),
-
-
-   archive: (newSeasonName) => execute(async () => {
-       await setDoc(doc(db, "system", "config"), {
-           currentSeason: newSeasonName,
-           availableSeasons: arrayUnion(seasonName)
-       }, { merge: true });
-
-
-       const usersSnapshot = await getDocs(collection(db, "users"));
-       const batches = [];
-       let batch = writeBatch(db);
-       let count = 0;
-       usersSnapshot.forEach((userDoc) => {
-           batch.update(userDoc.ref, { points: 0 });
-           count++;
-           if (count >= 400) { batches.push(batch.commit()); batch = writeBatch(db); count = 0; }
-       });
-       if (count > 0) batches.push(batch.commit());
-       await Promise.all(batches);
-   }, "賽季重置成功！"),
-
-
-   hardResetSystem: () => execute(async () => {
-       console.log("⚠️ 開始強制重置系統 (Hard Reset)...");
-       await clearCollection("submissions");
-       await clearCollection("tasks");
-       await clearCollection("announcements");
-       await clearCollection("games");
-       await clearCollection("roles");
-
-
-       const usersSnapshot = await getDocs(collection(db, "users"));
-       const batch = writeBatch(db);
-       usersSnapshot.forEach((userDoc) => {
-           batch.update(userDoc.ref, { points: 0, roles: [] });
-       });
-       await batch.commit();
-
-
-       const sysRef = doc(db, "system", "config");
-       await setDoc(sysRef, { currentSeason: "第一賽季", availableSeasons: [], seasonGoal: 10000, seasonGoalTitle: "Season Goal" }, { merge: true });
-
-
-       const ancRef = collection(db, "announcements");
-       await addDoc(ancRef, {
-           id: `a_${Date.now()}`, title: "歡迎來到新系統", content: "<p>這是系統自動建立的第一則公告。</p>",
-           author: "System", timestamp: new Date().toISOString(), images: "[]", season: "第一賽季"
-       });
-
-
-       const taskRef = collection(db, "tasks");
-       await addDoc(taskRef, {
-           id: `t_${Date.now()}`, title: "每日簽到", points: 10, icon: "📅", description: "每天登入並簽到",
-           week: "1", type: "fixed", createdAt: serverTimestamp(), season: "第一賽季"
-       });
-
-
-       const usersRef = collection(db, "users");
-       const userQ = query(usersRef, where("email", "==", "admin@teamaura.app"));
-       const userSnap = await getDocs(userQ);
-       if (userSnap.empty) {
-           await addDoc(usersRef, { username: "admin", email: "admin@teamaura.app", points: 0, isAdmin: true, joinedAt: new Date().toISOString() });
-       }
-   }, "系統已強制重置！"),
-
-
-   initializeSystem: () => execute(async () => {
-       const taskSnap = await getDocs(collection(db, "tasks"));
-       if (!taskSnap.empty) throw new Error("系統已有資料，初始化取消。");
-
-
-       const gameSnap = await getDocs(collection(db, "games"));
-       if (gameSnap.empty) {
-           const defaultGames = [{ id: 'g_1', title: '2048', url: 'https://hczhcz.github.io/2048/', icon: '🔢' }, { id: 'g_2', title: 'Hextris', url: 'https://hextris.github.io/hextris/', icon: '⬡' }, { id: 'g_3', title: 'Tetris', url: 'https://chvin.github.io/react-tetris/', icon: '🧱' }];
-           for(const g of defaultGames) await addDoc(collection(db, "games"), g);
-       }
-
-
-       const roleSnap = await getDocs(collection(db, "roles"));
-       if (roleSnap.empty) {
-           await addDoc(collection(db, "roles"), { code: "vip", label: "VIP", multiplier: 1.1, color: "#eab308" });
-       }
-
-
-       await setDoc(doc(db, "system", "config"), { currentSeason: "第一賽季", availableSeasons: [], seasonGoal: 10000, seasonGoalTitle: "Season Goal" }, { merge: true });
-
-
-       const ancRef = collection(db, "announcements");
-       if ((await getDocs(ancRef)).empty) {
-           await addDoc(ancRef, {
-               id: `a_${Date.now()}`, title: "歡迎來到新系統", content: "<p>這是系統自動建立的第一則公告。</p>",
-               author: "System", timestamp: new Date().toISOString(), images: "[]", season: "第一賽季"
-           });
-       }
-
-
-       const taskRef = collection(db, "tasks");
-       if ((await getDocs(taskRef)).empty) {
-           await addDoc(taskRef, {
-               id: `t_${Date.now()}`, title: "每日簽到", points: 10, icon: "📅", description: "每天登入並簽到",
-               week: "1", type: "fixed", createdAt: serverTimestamp(), season: "第一賽季"
-           });
-       }
-
-
-       const usersRef = collection(db, "users");
-       const userQ = query(usersRef, where("email", "==", "admin@teamaura.app"));
-       if ((await getDocs(userQ)).empty) {
-           await addDoc(usersRef, { username: "admin", email: "admin@teamaura.app", points: 0, isAdmin: true, joinedAt: new Date().toISOString() });
-       }
-   }, "系統初始化完成！")
- };
-
-
- return { actions, adminLoading };
+const { showToast } = useToast();
+const [adminLoading, setAdminLoading] = useState(false);
+
+
+const execute = async (fn, successMsg) => {
+  setAdminLoading(true);
+  try {
+    const result = await fn();
+    if (successMsg) showToast(successMsg);
+    return result !== false;
+  } catch (e) {
+    console.error(e);
+    showToast(e.message || "操作失敗", "error");
+    return false;
+  } finally { setAdminLoading(false); }
 };
+
+
+const clearCollection = async (collectionName) => {
+  const q = query(collection(db, collectionName));
+  const snapshot = await getDocs(q);
+  const batch = writeBatch(db);
+  let count = 0;
+  snapshot.docs.forEach((doc) => { batch.delete(doc.ref); count++; });
+  if (count > 0) await batch.commit();
+};
+
+
+const getValidSeason = () => {
+    if (!seasonName || seasonName === '載入中...' || seasonName === '未設定賽季') throw new Error("系統尚未載入賽季資訊");
+    return seasonName;
+};
+
+
+const calculateMultiplier = (userRoleCodes, allRoles = roles) => {
+    const safeRoles = allRoles || [];
+    const userRoles = userRoleCodes || [];
+    const activeRoles = safeRoles.filter(r => userRoles.includes(r.code));
+    let totalExtra = 0;
+    activeRoles.forEach(r => { totalExtra += (Number(r.multiplier) || 1) - 1; });
+    return Math.max(1, 1 + totalExtra);
+};
+
+
+const recalculateUserPoints = async (username, userDocId, currentSeason, currentRoles = roles) => {
+    const subRef = collection(db, "submissions");
+    const queries = [];
+   
+    if (userDocId) {
+        queries.push(query(subRef, where("userDocId", "==", userDocId), where("season", "==", currentSeason), where("status", "==", "approved")));
+    }
+   
+    if (username) {
+        queries.push(query(subRef, where("uid", "==", username), where("season", "==", currentSeason), where("status", "==", "approved")));
+    }
+
+
+    const results = await Promise.all(queries.map(q => getDocs(q)));
+   
+    const uniqueSubs = new Map();
+    results.forEach(snapshot => {
+        snapshot.forEach(doc => {
+            uniqueSubs.set(doc.id, doc.data());
+        });
+    });
+
+
+    const userDocSnap = await getDoc(doc(db, "users", userDocId));
+    if (!userDocSnap.exists()) return;
+    const userData = userDocSnap.data();
+    const multiplier = calculateMultiplier(userData.roles, currentRoles);
+   
+    let totalBasePoints = 0;
+    uniqueSubs.forEach(data => {
+        totalBasePoints += (data.basePoints !== undefined ? Number(data.basePoints) : Number(data.points)) || 0;
+    });
+   
+    let newTotalPoints = Math.round(totalBasePoints * multiplier);
+    await updateDoc(doc(db, "users", userDocId), { points: newTotalPoints });
+};
+
+
+const actions = {
+  uploadSingleImage: async (file) => {
+       try { const urls = await uploadImages([file]); return urls[0]; }
+       catch (error) { console.error("Editor upload failed", error); throw error; }
+  },
+
+
+  addTask: (taskData) => execute(async () => {
+    const currentSeason = getValidSeason();
+    await addDoc(collection(db, "tasks"), { ...taskData, id: `t_${Date.now()}`, season: currentSeason, createdAt: serverTimestamp() });
+  }, "任務新增成功"),
+
+
+  updateTask: (firestoreId, taskData) => execute(async () => {
+    if (!firestoreId) throw new Error("無效的任務 ID");
+    const { firestoreId: _, id, createdAt, season, ...updateFields } = taskData;
+    await updateDoc(doc(db, "tasks", firestoreId), updateFields);
+  }, "任務更新成功"),
+
+
+  deleteTask: (firestoreId) => execute(async () => {
+    if (!firestoreId || typeof firestoreId !== 'string') throw new Error("無效的任務 ID");
+    await deleteDoc(doc(db, "tasks", firestoreId));
+  }, "已刪除"),
+
+
+  submitTask: (data) => execute(async () => {
+    const currentSeason = getValidSeason();
+    let imageUrls = [];
+    if (data.rawFiles?.length > 0) imageUrls = await uploadImages(data.rawFiles);
+    const basePoints = data.task.type === 'fixed' ? (Number(data.task.points) || 0) : 0;
+    await addDoc(collection(db, "submissions"), {
+      id: `s_${Date.now()}`,
+      uid: currentUser.username,
+      userDocId: currentUser.firestoreId,
+      username: currentUser.username,
+      taskId: data.task.id,
+      taskTitle: data.task.title,
+      points: basePoints,
+      basePoints: basePoints,
+      status: 'pending',
+      proof: data.proof || '無備註',
+      timestamp: new Date().toISOString(),
+      images: JSON.stringify(imageUrls),
+      week: data.task.week,
+      season: currentSeason
+    });
+  }, "提交成功"),
+
+
+  withdraw: (firestoreId) => execute(async () => {
+    if (!firestoreId) throw new Error("無效的提交 ID");
+    await deleteDoc(doc(db, "submissions", firestoreId));
+  }, "已撤回"),
+
+
+  review: (sub, action, inputPoints, statusOverride) => execute(async () => {
+      if (!sub || !sub.firestoreId) throw new Error("無效的提交紀錄");
+      const newStatus = statusOverride || (action === 'approve' ? 'approved' : 'rejected');
+      let finalBasePoints = Number(inputPoints) || 0;
+     
+      if (newStatus === 'approved') {
+          try {
+              const tasksRef = collection(db, "tasks");
+              const q = query(tasksRef, where("id", "==", sub.taskId));
+              const querySnapshot = await getDocs(q);
+              if (!querySnapshot.empty) {
+                  const taskData = querySnapshot.docs[0].data();
+                  if (taskData.type === 'fixed') {
+                      const currentTaskPoints = Number(taskData.points) || 0;
+                      if (currentTaskPoints !== finalBasePoints) finalBasePoints = currentTaskPoints;
+                  }
+              }
+          } catch (e) { console.warn("同步任務分數失敗", e); }
+      } else if (newStatus === 'rejected') finalBasePoints = 0;
+
+
+      let user = null;
+      if (sub.userDocId) {
+          user = users.find(u => u.firestoreId === sub.userDocId);
+      }
+      if (!user) {
+          user = users.find(u => u.uid === sub.uid);
+      }
+
+
+      const subRef = doc(db, "submissions", sub.firestoreId);
+      await updateDoc(subRef, { status: newStatus, points: finalBasePoints, basePoints: finalBasePoints });
+     
+      if (user && user.firestoreId) {
+          const currentSeason = getValidSeason();
+          await recalculateUserPoints(user.username, user.firestoreId, currentSeason);
+      }
+  }, "操作成功"),
+
+
+  addAnnouncement: (title, content, rawFiles = [], category = '一般', isPinned = false, categoryId = null) => execute(async () => {
+      const currentSeason = getValidSeason();
+      let imageUrls = [];
+      if (rawFiles.length > 0) imageUrls = await uploadImages(rawFiles);
+      await addDoc(collection(db, "announcements"), {
+          id: `a_${Date.now()}`, title, content, category, categoryId, isPinned, author: currentUser.username, timestamp: new Date().toISOString(), images: JSON.stringify(imageUrls), season: currentSeason
+      });
+  }, "公告已發佈"),
+
+
+  updateAnnouncement: (item, title, content, rawFiles = [], category = '一般', isPinned = false, keepOldImages, categoryId = null) => execute(async () => {
+      if (!item?.firestoreId) throw new Error("無效的公告 ID");
+      let imageUrls = [];
+      let existingImages = keepOldImages ? keepOldImages : JSON.parse(item.images || '[]');
+      if (rawFiles?.length > 0) imageUrls = await uploadImages(rawFiles);
+      const finalImages = [...existingImages, ...imageUrls];
+      await updateDoc(doc(db, "announcements", item.firestoreId), { title, content, category, categoryId, isPinned, images: JSON.stringify(finalImages) });
+  }, "公告已更新"),
+
+
+  deleteAnnouncement: (firestoreId) => execute(async () => {
+      if (!firestoreId) throw new Error("無效的公告 ID");
+      await deleteDoc(doc(db, "announcements", firestoreId));
+  }),
+
+
+  addGame: (data) => execute(async () => { await addDoc(collection(db, "games"), { ...data, id: `g_${Date.now()}` }); }, "遊戲已新增"),
+  updateGame: (item, data) => execute(async () => { await updateDoc(doc(db, "games", item.firestoreId), data); }, "遊戲已更新"),
+  deleteGame: (firestoreId) => execute(async () => { await deleteDoc(doc(db, "games", firestoreId)); }),
+  addRole: (data) => execute(async () => { await addDoc(collection(db, "roles"), { ...data, multiplier: Number(data.multiplier) || 1 }); }, "身分組已新增"),
+  updateRole: (id, data) => execute(async () => { await updateDoc(doc(db, "roles", id), { ...data, multiplier: Number(data.multiplier) || 1 }); }, "身分組已更新"),
+  deleteRole: (id) => execute(async () => { await deleteDoc(doc(db, "roles", id)); }, "身分組已刪除"),
+  addCategory: (data) => execute(async () => { await addDoc(collection(db, "categories"), data); }, "分類已新增"),
+  updateCategory: (id, data) => execute(async () => { await updateDoc(doc(db, "categories", id), data); }, "分類已更新"),
+  deleteCategory: (id) => execute(async () => { await deleteDoc(doc(db, "categories", id)); }, "分類已刪除"),
+
+
+  updateUserRoles: (userId, newRoles) => execute(async () => {
+      const user = users.find(u => u.uid === userId || u.firestoreId === userId);
+      if (!user) throw new Error("找不到使用者");
+      await updateDoc(doc(db, "users", user.firestoreId), { roles: newRoles });
+      const currentSeason = getValidSeason();
+      await recalculateUserPoints(user.username, user.firestoreId, currentSeason);
+  }, "使用者身分已更新"),
+  updateSeasonGoal: (newGoal, newTitle) => execute(async () => { await setDoc(doc(db, "system", "config"), { seasonGoal: Number(newGoal), seasonGoalTitle: newTitle }, { merge: true }); }, "目標設定已更新"),
+  archive: (newSeasonName) => execute(async () => { await setDoc(doc(db, "system", "config"), { currentSeason: newSeasonName, availableSeasons: arrayUnion(seasonName) }, { merge: true }); }, "賽季重置成功！"),
+ 
+  hardResetSystem: () => execute(async () => {
+      console.log("⚠️ 強制重置...");
+      await clearCollection("submissions");
+      await clearCollection("tasks");
+      await clearCollection("announcements");
+      await clearCollection("games");
+      await clearCollection("roles");
+      await clearCollection("categories");
+      const usersSnapshot = await getDocs(collection(db, "users"));
+      const batch = writeBatch(db);
+      usersSnapshot.forEach((userDoc) => { batch.update(userDoc.ref, { points: 0, roles: [] }); });
+      await batch.commit();
+  }, "系統已強制重置！"),
+
+
+  initializeSystem: () => execute(async () => {
+      const taskSnap = await getDocs(collection(db, "tasks"));
+      if (!taskSnap.empty) throw new Error("系統已有資料");
+      const gameSnap = await getDocs(collection(db, "games"));
+      if (gameSnap.empty) {
+          const defaultGames = [{ id: 'g_1', title: '2048', url: 'https://hczhcz.github.io/2048/', icon: '🔢' }, { id: 'g_2', title: 'Hextris', url: 'https://hextris.github.io/hextris/', icon: '⬡' }, { id: 'g_3', title: 'Tetris', url: 'https://chvin.github.io/react-tetris/', icon: '🧱' }];
+          for(const g of defaultGames) await addDoc(collection(db, "games"), g);
+      }
+      const roleSnap = await getDocs(collection(db, "roles"));
+      if (roleSnap.empty) {
+          await addDoc(collection(db, "roles"), { code: "vip", label: "VIP", multiplier: 1.1, color: "#eab308" });
+      }
+      const catRef = collection(db, "categories");
+      const catSnap = await getDocs(catRef);
+      if (catSnap.empty) {
+          const defaultCats = [
+              { label: '一般', color: '#64748b', type: 'task' },
+              { label: '每日', color: '#f97316', type: 'task', systemTag: 'daily' },
+              { label: '賽季', color: '#eab308', type: 'task' },
+              { label: '常駐', color: '#ef4444', type: 'task', systemTag: 'pinned' }
+          ];
+          for(const c of defaultCats) await addDoc(catRef, c);
+      }
+      await setDoc(doc(db, "system", "config"), { currentSeason: "第一賽季", availableSeasons: [], seasonGoal: 10000, seasonGoalTitle: "Season Goal" }, { merge: true });
+      const ancRef = collection(db, "announcements");
+      if ((await getDocs(ancRef)).empty) {
+          await addDoc(ancRef, { id: `a_${Date.now()}`, title: "歡迎來到新系統", content: "<p>這是系統自動建立的第一則公告。</p>", author: "System", timestamp: new Date().toISOString(), images: "[]", season: "第一賽季" });
+      }
+      const taskRef = collection(db, "tasks");
+      if ((await getDocs(taskRef)).empty) {
+          await addDoc(taskRef, { id: `t_${Date.now()}`, title: "每日簽到", points: 10, icon: "📅", description: "每天登入並簽到", week: "1", type: "fixed", createdAt: serverTimestamp(), season: "第一賽季" });
+      }
+      const usersRef = collection(db, "users");
+      const userQ = query(usersRef, where("email", "==", "admin@teamaura.app"));
+      if ((await getDocs(userQ)).empty) {
+          await addDoc(usersRef, { username: "admin", email: "admin@teamaura.app", points: 0, isAdmin: true, joinedAt: new Date().toISOString() });
+      }
+  }, "系統初始化完成！"),
+
+
+  // ▼▼▼ 修正：防重複匯入邏輯 ▼▼▼
+  restoreDefaultCategories: () => execute(async () => {
+      const catRef = collection(db, "categories");
+      const catSnap = await getDocs(catRef);
+      let categoryMap = {}; // 用來存 Label-Type -> ID
+      let existingSystemTags = new Set(); // 用來存已經存在的 System Tag (如 'daily', 'pinned')
+
+
+      const catBatch = writeBatch(db);
+      let updatedCount = 0;
+
+
+      // 1. 先掃描現有的分類
+      catSnap.docs.forEach(d => {
+          const data = d.data();
+          const key = `${data.label}-${data.type || 'task'}`;
+          categoryMap[key] = d.id;
+
+
+          // 收集已存在的 systemTag (即使 label 被改名了)
+          if (data.systemTag) {
+              existingSystemTags.add(data.systemTag);
+          }
+
+
+          // 補上 systemTag (Migration)
+          let newSystemTag = undefined;
+          if (data.type === 'task') {
+              if (data.label === '每日' && !data.systemTag) {
+                  newSystemTag = 'daily';
+                  existingSystemTags.add('daily'); // 標記已存在
+              } else if (data.label === '常駐' && !data.systemTag) {
+                  newSystemTag = 'pinned';
+                  existingSystemTags.add('pinned');
+              } else if (data.label === '賽季' && data.systemTag === 'seasonal') {
+                  newSystemTag = null; // 移除 systemTag
+              }
+          }
+         
+          if (newSystemTag !== undefined) {
+              catBatch.update(d.ref, { systemTag: newSystemTag });
+              updatedCount++;
+          }
+      });
+
+
+      // 2. 定義預設分類
+      const defaultCats = [
+          { label: '一般', color: '#64748b', type: 'task' },
+          { label: '每日', color: '#f97316', type: 'task', systemTag: 'daily' },
+          { label: '每週', color: '#3b82f6', type: 'task' },
+          { label: '挑戰', color: '#8b5cf6', type: 'task' },
+          { label: '賽季', color: '#eab308', type: 'task' },
+          { label: '常駐', color: '#ef4444', type: 'task', systemTag: 'pinned' },
+          { label: '一般', color: '#64748b', type: 'announcement' },
+          { label: '活動', color: '#22c55e', type: 'announcement' },
+          { label: '重要', color: '#ef4444', type: 'announcement' },
+          { label: '更新', color: '#3b82f6', type: 'announcement' },
+          { label: '維護', color: '#f97316', type: 'announcement' }
+      ];
+     
+      let addedCount = 0;
+      for(const c of defaultCats) {
+          // 規則 1: 如果該分類有 systemTag，且資料庫中已經有這個 systemTag 了 -> 跳過不新增
+          if (c.systemTag && existingSystemTags.has(c.systemTag)) {
+              continue;
+          }
+
+
+          // 規則 2: 檢查 Label-Type 是否存在
+          const key = `${c.label}-${c.type}`;
+          if (!categoryMap[key]) {
+              const docRef = await addDoc(catRef, c);
+              categoryMap[key] = docRef.id;
+              addedCount++;
+          }
+      }
+     
+      if (updatedCount > 0) {
+          await catBatch.commit();
+      }
+
+
+      // ... (後面的任務連結遷移邏輯保持不變) ...
+      const taskRef = collection(db, "tasks");
+      const taskSnap = await getDocs(taskRef);
+      const dataBatch = writeBatch(db);
+      let dataUpdateCount = 0;
+     
+      taskSnap.forEach(t => {
+          const data = t.data();
+          if (data.category && !data.categoryId) {
+              const key = `${data.category}-task`;
+              const targetId = categoryMap[key];
+              if (targetId) { dataBatch.update(t.ref, { categoryId: targetId }); dataUpdateCount++; }
+          }
+      });
+
+
+      const ancRef = collection(db, "announcements");
+      const ancSnap = await getDocs(ancRef);
+      ancSnap.forEach(a => {
+          const data = a.data();
+          if (data.category && !data.categoryId) {
+              const key = `${data.category}-announcement`;
+              const targetId = categoryMap[key];
+              if (targetId) { dataBatch.update(a.ref, { categoryId: targetId }); dataUpdateCount++; }
+          }
+      });
+
+
+      if (dataUpdateCount > 0) { await dataBatch.commit(); }
+      console.log(`Migration: +${addedCount} cats, Updated ${updatedCount} cat-tags, ${dataUpdateCount} items.`);
+  }, "資料遷移與系統標籤更新完成！"),
+  // ▲▲▲ 修正結束 ▲▲▲
+
+
+  fixSubmissionLinks: () => execute(async () => {
+      console.log("開始修復提交連結...");
+      const batch = writeBatch(db);
+      let count = 0;
+      const usersSnap = await getDocs(collection(db, "users"));
+      const usersMap = usersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const subsSnap = await getDocs(collection(db, "submissions"));
+     
+      subsSnap.forEach(subDoc => {
+          const subData = subDoc.data();
+          if (subData.userDocId) return;
+          const matchedUser = usersMap.find(u => u.username === subData.uid);
+          if (matchedUser) {
+              batch.update(subDoc.ref, { userDocId: matchedUser.id });
+              count++;
+          }
+      });
+
+
+      if (count > 0) {
+          await batch.commit();
+          console.log(`修復了 ${count} 筆提交紀錄`);
+      } else {
+          console.log("沒有需要修復的紀錄");
+      }
+  }, `掃描完成，修復了連結。`)
+};
+return { actions, adminLoading };
+};
+
+
 
