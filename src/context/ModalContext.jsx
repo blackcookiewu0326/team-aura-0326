@@ -18,8 +18,7 @@ const EMOJI_LIST = ['🐾', '📅', '⚔️', '✨', '🥚', '🎁', '🔥', '�
 
 
 const CategorySelector = ({ options, selectedId, onSelect }) => (
-   // 修正：容器背景適配深色模式
-   <div className="flex flex-wrap gap-2 p-2 bg-slate-50 border rounded-lg max-h-32 overflow-y-auto dark:bg-slate-800 dark:border-slate-700">
+   <div className="flex flex-wrap gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg max-h-32 overflow-y-auto dark:bg-slate-800 dark:border-slate-700">
        {options.length > 0 ? options.map(cat => {
            const isSelected = selectedId === cat.firestoreId;
            return (
@@ -27,7 +26,7 @@ const CategorySelector = ({ options, selectedId, onSelect }) => (
                    key={cat.firestoreId}
                    type="button"
                    onClick={() => onSelect(cat)}
-                   className={`flex items-center px-2 py-1 rounded text-xs transition-all border shadow-sm ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-1 scale-105 dark:ring-offset-slate-800' : 'hover:opacity-90 border-transparent hover:scale-105'}`}
+                   className={`flex items-center px-2 py-1 rounded text-xs transition-all border shadow-sm ${isSelected ? 'ring-2 ring-indigo-500 ring-offset-1 scale-105 dark:ring-offset-slate-900' : 'hover:opacity-90 border-transparent hover:scale-105'}`}
                    style={{ backgroundColor: cat.color, color: '#ffffff' }}
                >
                    {cat.label}
@@ -137,10 +136,11 @@ export const ModalProvider = ({ children }) => {
    return (
        <ModalContext.Provider value={{ openTaskModal, openSubmitModal, openAnnounceModal, openGameModal, openArchiveModal, openUserRoleModal, confirm }}>
            {children}
+           
            {/* Task Modal */}
            <Modal isOpen={taskModal.isOpen} onClose={() => setTaskModal(prev => ({ ...prev, isOpen: false }))} title={taskModal.id ? "編輯任務" : "新增任務"}>
                <div className="space-y-4 relative" onClick={() => setShowEmojiPicker(false)}>
-                   {/* 修正：分頁按鈕背景 dark:bg-slate-800 */}
+                   {/* 修正：切換按鈕背景 */}
                    <div className="bg-slate-100 p-1 rounded-lg flex text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                        {Object.entries(TASK_TYPES).map(([key, config]) => (
                            <button
@@ -153,26 +153,26 @@ export const ModalProvider = ({ children }) => {
                        ))}
                    </div>
                    <div className="space-y-4 pt-2">
-                        <div><label className="text-xs font-bold text-gray-500 mb-1 block dark:text-slate-400">任務標題</label><input className="w-full p-2 border rounded-lg text-sm" placeholder="輸入任務名稱" value={taskModal.data.title} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, title: e.target.value } })} /></div>
+                        {/* 修正：增加 p-3 內距，確保文字與邊框有足夠間隙，並加上明確的邊框 border border-slate-300 dark:border-slate-700 */}
+                        <div><label className="text-xs font-bold text-muted-custom mb-1 block">任務標題</label><input className="input p-3 border border-slate-300 dark:border-slate-700 rounded-lg w-full" placeholder="輸入任務名稱" value={taskModal.data.title} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, title: e.target.value } })} /></div>
                         <div className="grid grid-cols-2 gap-3">
-                            <div><label className="text-xs font-bold text-gray-500 mb-1 block dark:text-slate-400">計分方式</label><div className="flex gap-2"><select className="w-full p-2 border rounded-lg text-sm" value={taskModal.data.type} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, type: e.target.value } })}><option value="fixed">固定分數</option><option value="variable">管理員評分</option></select></div></div>
-                            {currentTaskType !== 'PINNED' && (<div><label className="text-xs font-bold text-gray-500 mb-1 block dark:text-slate-400">所屬週次</label><input type="number" className="w-full p-2 border rounded-lg text-sm" placeholder="例如: 1" value={taskModal.data.week} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, week: e.target.value } })} /></div>)}
-                            {taskModal.data.type === 'fixed' && (<div><label className="text-xs font-bold text-gray-500 mb-1 block dark:text-slate-400">獲得積分</label><input type="number" className="w-full p-2 border rounded-lg text-sm" placeholder="例如: 10" value={taskModal.data.points} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, points: e.target.value } })} /></div>)}
+                            <div><label className="text-xs font-bold text-muted-custom mb-1 block">計分方式</label><div className="flex gap-2"><select className="input p-3 border border-slate-300 dark:border-slate-700 rounded-lg w-full" value={taskModal.data.type} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, type: e.target.value } })}><option value="fixed">固定分數</option><option value="variable">管理員評分</option></select></div></div>
+                            {currentTaskType !== 'PINNED' && (<div><label className="text-xs font-bold text-muted-custom mb-1 block">所屬週次</label><input type="number" className="input p-3 border border-slate-300 dark:border-slate-700 rounded-lg w-full" placeholder="例如: 1" value={taskModal.data.week} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, week: e.target.value } })} /></div>)}
+                            {taskModal.data.type === 'fixed' && (<div><label className="text-xs font-bold text-muted-custom mb-1 block">獲得積分</label><input type="number" className="input p-3 border border-slate-300 dark:border-slate-700 rounded-lg w-full" placeholder="例如: 10" value={taskModal.data.points} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, points: e.target.value } })} /></div>)}
                         </div>
-                        {currentTaskType === 'SEASONAL' && (<div><label className="text-xs font-bold text-gray-500 mb-1 block dark:text-slate-400">分類標籤</label><CategorySelector options={categories ? categories.filter(c => c.type === 'task' && c.label !== '每日' && c.label !== '常駐') : []} selectedId={taskModal.data.categoryId} onSelect={(cat) => setTaskModal(prev => ({ ...prev, data: { ...prev.data, category: cat.label, categoryId: cat.firestoreId, categoryColor: cat.color } }))} /></div>)}
+                        {currentTaskType === 'SEASONAL' && (<div><label className="text-xs font-bold text-muted-custom mb-1 block">分類標籤</label><CategorySelector options={categories ? categories.filter(c => c.type === 'task' && c.label !== '每日' && c.label !== '常駐') : []} selectedId={taskModal.data.categoryId} onSelect={(cat) => setTaskModal(prev => ({ ...prev, data: { ...prev.data, category: cat.label, categoryId: cat.firestoreId, categoryColor: cat.color } }))} /></div>)}
                         <div className="mt-2">
-                            {/* 修正：Checkbox 容器背景 dark:bg-slate-800 dark:hover:bg-slate-700 */}
-                            <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 select-none w-full sm:w-auto dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700">
+                            {/* 修正：Checkbox 容器背景與邊框 */}
+                            <label className="flex items-center gap-2 p-2 border border-slate-300 rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 select-none w-full sm:w-auto dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700">
                                 <input type="checkbox" checked={taskModal.data.isPinned || false} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, isPinned: e.target.checked } })} className="w-4 h-4 accent-indigo-600" />
                                 <span className="text-sm font-bold text-slate-700 dark:text-slate-300">置頂 (顯示於該區塊最上方)</span>
                             </label>
                         </div>
                         <div className="relative">
-                            <label className="text-xs font-bold text-gray-500 mb-1 block dark:text-slate-400">圖示 (Emoji)</label>
+                            <label className="text-xs font-bold text-muted-custom mb-1 block">圖示 (Emoji)</label>
                             <div className="flex gap-2">
-                                <input className="flex-1 p-2 border rounded-lg text-center text-xl" placeholder="🐾" value={taskModal.data.icon} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, icon: e.target.value } })} />
-                                {/* 修正：按鈕背景 dark:bg-slate-700 */}
-                                <button type="button" onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }} className="bg-gray-100 p-2 rounded-lg hover:bg-gray-200 transition-colors dark:bg-slate-700 dark:hover:bg-slate-600"><Icon name="Smile" className="w-5 h-5 text-gray-600 dark:text-slate-300" /></button>
+                                <input className="input flex-1 text-center text-xl p-3 border border-slate-300 dark:border-slate-700 rounded-lg" placeholder="🐾" value={taskModal.data.icon} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, icon: e.target.value } })} />
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }} className="bg-slate-100 border border-slate-300 p-2 rounded-lg hover:bg-slate-200 transition-colors dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700"><Icon name="Smile" className="w-5 h-5 text-gray-600 dark:text-slate-300" /></button>
                             </div>
                             {showEmojiPicker && (
                                 <div className="absolute right-0 bottom-full mb-2 bg-white border border-gray-200 rounded-lg shadow-xl p-2 z-50 w-64 grid grid-cols-6 gap-1 max-h-48 overflow-y-auto dark:bg-slate-800 dark:border-slate-700" onClick={(e) => e.stopPropagation()}>
@@ -180,7 +180,7 @@ export const ModalProvider = ({ children }) => {
                                 </div>
                             )}
                         </div>
-                        <div><label className="text-xs font-bold text-gray-500 mb-1 block dark:text-slate-400">任務描述</label><textarea className="w-full p-2 border rounded-lg h-24 resize-none text-sm" placeholder="請輸入詳細說明..." value={taskModal.data.description} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, description: e.target.value } })} /></div>
+                        <div><label className="text-xs font-bold text-muted-custom mb-1 block">任務描述</label><textarea className="input h-24 resize-none p-3 border border-slate-300 dark:border-slate-700 rounded-lg w-full" placeholder="請輸入詳細說明..." value={taskModal.data.description} onChange={e => setTaskModal({ ...taskModal, data: { ...taskModal.data, description: e.target.value } })} /></div>
                         <Button onClick={handleSaveTask} className="w-full">{taskModal.id ? "更新任務" : "新增任務"}</Button>
                    </div>
                </div>
@@ -190,20 +190,18 @@ export const ModalProvider = ({ children }) => {
            {/* Submit Modal */}
            <Modal isOpen={submitModal.isOpen} onClose={() => setSubmitModal(prev => ({ ...prev, isOpen: false }))} title={`回報: ${submitModal.task?.title}`}>
               <div className="space-y-4">
-                {/* 修正：任務資訊卡背景 dark:bg-slate-800 */}
-                <div className="bg-slate-50 p-3 rounded-lg flex items-center gap-3 dark:bg-slate-800">
+                <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex items-center gap-3 dark:bg-slate-800 dark:border-slate-700">
                    <div className="text-3xl">{submitModal.task?.icon}</div>
                    <div><div className="font-bold text-slate-700 dark:text-slate-200">{submitModal.task?.title}</div><div className="text-xs text-slate-500 dark:text-slate-400">{submitModal.task?.description}</div></div>
                 </div>
                 <div>
-                   <label className="text-xs font-bold text-gray-500 mb-1 block dark:text-slate-400">上傳證明截圖 (可選)</label>
-                   {/* 修正：上傳區塊背景 dark:bg-slate-800 dark:border-slate-700 */}
-                   <div onClick={() => fileInputRef.current?.click()} className="w-full h-32 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-100 transition-colors dark:bg-slate-800/50 dark:border-slate-700 dark:hover:bg-slate-800">
+                   <label className="text-xs font-bold text-muted-custom mb-1 block">上傳證明截圖 (可選)</label>
+                   <div onClick={() => fileInputRef.current?.click()} className="w-full h-32 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 transition-colors dark:bg-slate-800/50 dark:border-slate-600 dark:hover:bg-slate-800">
                        {submitModal.images.length > 0 ? (<div className="flex gap-2 overflow-x-auto w-full px-2 h-full items-center">{submitModal.images.map((img, i) => (<img key={i} src={img} className="h-24 w-auto rounded shadow-sm object-cover" />))}</div>) : (<><Icon name="Camera" className="w-8 h-8 text-gray-400 mb-2 dark:text-slate-500" /><span className="text-xs text-gray-400 dark:text-slate-500">點擊上傳圖片</span></>)}
                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*" multiple onChange={handleImageUpload} />
                    </div>
                 </div>
-                <div><label className="text-xs font-bold text-gray-500 mb-1 block dark:text-slate-400">備註說明 (可選)</label><textarea className="w-full p-3 border rounded-xl text-sm h-20 resize-none focus:border-indigo-500 outline-none" placeholder="有什麼想補充的嗎？" value={submitModal.proof} onChange={e => setSubmitModal({ ...submitModal, proof: e.target.value })}/></div>
+                <div><label className="text-xs font-bold text-muted-custom mb-1 block">備註說明 (可選)</label><textarea className="input h-20 resize-none p-3 border border-slate-300 dark:border-slate-700 rounded-lg w-full" placeholder="有什麼想補充的嗎？" value={submitModal.proof} onChange={e => setSubmitModal({ ...submitModal, proof: e.target.value })}/></div>
                 <Button onClick={handleSubmitTask} className="w-full py-3">提交回報</Button>
               </div>
            </Modal>
@@ -212,22 +210,20 @@ export const ModalProvider = ({ children }) => {
            {/* Announcement Modal */}
            <Modal isOpen={announceModal.isOpen} onClose={() => setAnnounceModal(prev => ({ ...prev, isOpen: false }))} title={announceModal.id ? "編輯公告" : "發佈公告"}>
               <div className="space-y-3">
-                <input className="w-full p-2 border rounded-lg font-bold" placeholder="主旨標題" value={announceModal.title} onChange={e => setAnnounceModal({ ...announceModal, title: e.target.value })} />
+                <input className="input font-bold p-3 border border-slate-300 dark:border-slate-700 rounded-lg w-full" placeholder="主旨標題" value={announceModal.title} onChange={e => setAnnounceModal({ ...announceModal, title: e.target.value })} />
                 <div className="flex flex-col gap-2">
-                   <label className="text-xs font-bold text-gray-500 dark:text-slate-400">分類標籤</label>
+                   <label className="text-xs font-bold text-muted-custom">分類標籤</label>
                    <CategorySelector options={categories ? categories.filter(c => c.type === 'announcement') : []} selectedId={announceModal.categoryId} onSelect={(cat) => setAnnounceModal(prev => ({ ...prev, category: cat.label, categoryId: cat.firestoreId, categoryColor: cat.color}))} />
-                   {/* 修正：置頂 Checkbox 背景 */}
-                   <label className="flex items-center gap-2 p-2 border rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 select-none w-full sm:w-auto mt-2 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700">
+                   <label className="flex items-center gap-2 p-2 border border-slate-300 rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 select-none w-full sm:w-auto mt-2 dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700">
                        <input type="checkbox" checked={announceModal.isPinned} onChange={e => setAnnounceModal({ ...announceModal, isPinned: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
                        <span className="text-sm font-bold text-slate-700 dark:text-slate-300">置頂</span>
                    </label>
                 </div>
                 <RichTextEditor value={announceModal.content} onChange={(html) => setAnnounceModal(prev => ({ ...prev, content: html }))} onImageUpload={async (file) => await actions.uploadSingleImage(file)} />
                 <div>
-                   <div className="text-xs font-bold text-gray-500 mb-2 flex justify-between items-end dark:text-slate-400"><span>附件圖片</span><span className="text-[10px] text-gray-400 font-normal">點擊可刪除</span></div>
+                   <div className="text-xs font-bold text-muted-custom mb-2 flex justify-between items-end"><span>附件圖片</span><span className="text-[10px] text-gray-400 font-normal">點擊可刪除</span></div>
                    {announceModal.images && announceModal.images.length > 0 && (<div className="grid grid-cols-4 gap-2 mb-2">{announceModal.images.map((url, idx) => (<div key={idx} className="relative group cursor-pointer" onClick={() => setAnnounceModal(prev => { const newImg = [...prev.images]; newImg.splice(idx, 1); return {...prev, images: newImg}; })}><img src={url} className="w-full h-16 object-cover rounded border border-gray-200 dark:border-slate-700" /><div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded text-white"><Icon name="Trash2" className="w-4 h-4" /></div></div>))}</div>)}
-                   {/* 修正：附件上傳區塊 */}
-                   <div onClick={() => announceFileRef.current?.click()} className="w-full min-h-[60px] rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 flex flex-wrap gap-2 p-2 cursor-pointer items-center justify-center hover:bg-gray-100 transition-colors dark:bg-slate-800/50 dark:border-slate-700 dark:hover:bg-slate-800">
+                   <div onClick={() => announceFileRef.current?.click()} className="w-full min-h-[60px] rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 flex flex-wrap gap-2 p-2 cursor-pointer items-center justify-center hover:bg-slate-100 transition-colors dark:bg-slate-800/50 dark:border-slate-600 dark:hover:bg-slate-800">
                        <div className="text-gray-400 flex flex-col items-center dark:text-slate-500"><Icon name="Image" className="w-5 h-5 mb-1" /><span className="text-xs">點擊新增附件</span></div>
                        <input type="file" ref={announceFileRef} className="hidden" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files); if (files.length) setAnnounceModal(prev => ({ ...prev, rawFiles: [...(prev.rawFiles || []), ...files], images: [...prev.images, ...files.map(f => URL.createObjectURL(f))] })); }} />
                    </div>
@@ -239,13 +235,12 @@ export const ModalProvider = ({ children }) => {
            {/* Game Modal */}
            <Modal isOpen={gameModal.isOpen} onClose={() => setGameModal(prev => ({ ...prev, isOpen: false }))} title={gameModal.id ? "編輯遊戲" : "新增遊戲"}>
               <div className="space-y-3">
-                <input className="w-full p-2 border rounded-lg" placeholder="遊戲名稱" value={gameModal.title} onChange={e => setGameModal({ ...gameModal, title: e.target.value })} />
-                <input className="w-full p-2 border rounded-lg" placeholder="https://..." value={gameModal.url} onChange={e => setGameModal({ ...gameModal, url: e.target.value })} />
+                <input className="input p-3 border border-slate-300 dark:border-slate-700 rounded-lg w-full" placeholder="遊戲名稱" value={gameModal.title} onChange={e => setGameModal({ ...gameModal, title: e.target.value })} />
+                <input className="input p-3 border border-slate-300 dark:border-slate-700 rounded-lg w-full" placeholder="https://..." value={gameModal.url} onChange={e => setGameModal({ ...gameModal, url: e.target.value })} />
                 <div className="relative">
                    <div className="flex gap-2">
-                       <input className="flex-1 p-2 border rounded-lg text-center" placeholder="Icon (Emoji)" value={gameModal.icon} onChange={e => setGameModal({ ...gameModal, icon: e.target.value })} />
-                       {/* 修正：按鈕背景 */}
-                       <button type="button" onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }} className="bg-gray-100 p-2 rounded-lg hover:bg-gray-200 transition-colors dark:bg-slate-700 dark:hover:bg-slate-600"><Icon name="Smile" className="w-5 h-5 text-gray-600 dark:text-slate-300" /></button>
+                       <input className="input flex-1 text-center p-3 border border-slate-300 dark:border-slate-700 rounded-lg" placeholder="Icon (Emoji)" value={gameModal.icon} onChange={e => setGameModal({ ...gameModal, icon: e.target.value })} />
+                       <button type="button" onClick={(e) => { e.stopPropagation(); setShowEmojiPicker(!showEmojiPicker); }} className="bg-slate-100 border border-slate-200 p-2 rounded-lg hover:bg-slate-200 transition-colors dark:bg-slate-800 dark:border-slate-700 dark:hover:bg-slate-700"><Icon name="Smile" className="w-5 h-5 text-gray-600 dark:text-slate-300" /></button>
                    </div>
                    {/* Emoji Picker */}
                    {showEmojiPicker && (
@@ -258,21 +253,23 @@ export const ModalProvider = ({ children }) => {
               </div>
            </Modal>
           
+            {/* Archive Modal */}
             <Modal isOpen={archiveModal.isOpen} onClose={() => setArchiveModal(prev => ({ ...prev, isOpen: false }))} title="重置賽季">
                <div className="space-y-4">
                   <div className="bg-yellow-50 p-3 rounded-lg border border-yellow-100 text-xs text-yellow-700 dark:bg-yellow-900/30 dark:border-yellow-900 dark:text-yellow-400">⚠️ 警告：此操作將重置所有積分並封存目前資料。</div>
-                  <input className="w-full p-2 border rounded-lg" placeholder="新賽季名稱" value={archiveModal.newSeasonName} onChange={e => setArchiveModal({ ...archiveModal, newSeasonName: e.target.value })} />
+                  <input className="input p-3 border border-slate-300 dark:border-slate-700 rounded-lg w-full" placeholder="新賽季名稱" value={archiveModal.newSeasonName} onChange={e => setArchiveModal({ ...archiveModal, newSeasonName: e.target.value })} />
                   <Button variant="danger" onClick={() => { if(archiveModal.newSeasonName) actions.archive(archiveModal.newSeasonName).then(() => setArchiveModal(prev => ({...prev, isOpen: false}))); }} className="w-full">確認重置</Button>
                </div>
             </Modal>
 
 
+            {/* User Role Modal */}
             <Modal isOpen={userRoleModal.isOpen} onClose={() => setUserRoleModal(prev => ({ ...prev, isOpen: false }))} title={`設定身分: ${userRoleModal.uid}`}>
                 <div className="space-y-4">
                     <div className="bg-indigo-50 p-3 rounded-lg text-xs text-indigo-700 mb-2 dark:bg-indigo-900/30 dark:text-indigo-300">勾選此使用者擁有的身分組 (可多選)</div>
                     <div className="space-y-2 max-h-[300px] overflow-y-auto">
                         {(roles || []).map(role => (
-                            <label key={role.code} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 dark:border-slate-700"><div className="flex items-center gap-2"><span style={{color: role.color}} className="font-bold">{role.label}</span><span className="text-xs text-gray-400">x{role.multiplier}</span></div><input type="checkbox" checked={(userRoleModal.roles || []).includes(role.code)} onChange={(e) => { const currentRoles = userRoleModal.roles || []; const newRoles = e.target.checked ? [...currentRoles, role.code] : currentRoles.filter(r => r !== role.code); setUserRoleModal({ ...userRoleModal, roles: newRoles }); }} className="w-5 h-5 accent-indigo-600" /></label>
+                            <label key={role.code} className="flex items-center justify-between p-3 border rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 dark:border-slate-700"><div className="flex items-center gap-2"><span style={{color: role.color}} className="font-bold">{role.label}</span><span className="text-xs text-gray-400">x{role.multiplier}</span></div><input type="checkbox" checked={(userRoleModal.roles || []).includes(role.code)} onChange={(e) => { const currentRoles = userRoleModal.roles || []; const newRoles = e.target.checked ? [...currentRoles, role.code] : currentRoles.filter(r => r !== role.code); setUserRoleModal({ ...userRoleModal, roles: newRoles }); }} className="w-5 h-5 accent-indigo-600" /></label>
                         ))}
                     </div>
                     <Button onClick={handleUpdateUserRoles} className="w-full">儲存設定</Button>
@@ -285,4 +282,3 @@ export const ModalProvider = ({ children }) => {
    );
 };
 export const useModals = () => useContext(ModalContext);
-
