@@ -1,6 +1,5 @@
 import React from 'react';
 import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
 import { Icon } from '../components/Icons';
 import { useGlobalData } from '../context/DataContext';
 import { useModals } from '../context/ModalContext';

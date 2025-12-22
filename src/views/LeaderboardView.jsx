@@ -18,6 +18,17 @@ const getRankStyle = (rank) => {
 };
 
 
+// Helper to get medal color
+const getRankStyle = (rank) => {
+   switch (rank) {
+       case 1: return { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400', border: 'border-yellow-200 dark:border-yellow-700', icon: '👑' };
+       case 2: return { bg: 'bg-slate-100 dark:bg-slate-700/50', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-600', icon: '🥈' };
+       case 3: return { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400', border: 'border-orange-200 dark:border-orange-700', icon: '🥉' };
+       default: return { bg: 'bg-white dark:bg-slate-800', text: 'text-slate-700 dark:text-slate-300', border: 'border-slate-100 dark:border-slate-700', icon: rank };
+   }
+};
+
+
 export const LeaderboardView = () => {
    const {
        users, submissions, tasks, roles, loading, currentUser,
@@ -30,9 +41,17 @@ export const LeaderboardView = () => {
    const [editGoal, setEditGoal] = useState(10000);
    const [editLotteryTarget, setEditLotteryTarget] = useState(0);
 
+   const rankedUsers = useMemo(() => {
+       if (!users || !submissions) return [];
 
    const [targetModal, setTargetModal] = useState({ isOpen: false, points: 0 });
 
+       submissions.forEach(sub => {
+           if (sub.status === 'approved') {
+               const uid = sub.userDocId || sub.uid;
+               const points = Number(sub.points) || 0;
+               const task = tasks.find(t => t.id === sub.taskId);
+               const isBonusOnly = task?.isBonusOnly;
 
    // 2. Calculate ranked users dynamically based on approved submissions
    const rankedUsers = useMemo(() => {
@@ -66,6 +85,11 @@ export const LeaderboardView = () => {
            }
        });
 
+       const result = users
+           .filter(u => !u.isAdmin)
+           .map(u => {
+               const basePoints = userPointsMap.get(u.firestoreId) || 0;
+               const baseSeasonPoints = userSeasonPointsMap.get(u.firestoreId) || 0;
 
        // Convert to array and calculate final scores with multipliers
        const result = users
@@ -157,6 +181,16 @@ export const LeaderboardView = () => {
        if (!userRoles || !roles) return [];
        return roles.filter(r => userRoles.includes(r.code));
    };
+   
+   // 新增處理點擊使用者名稱的函式
+   const handleUserClick = (user) => {
+       if (isAdmin && !isHistoryMode) {
+           openUserRoleModal(user.firestoreId, user.roles);
+       }
+   };
+
+
+   if (loading) return <LoadingOverlay message="計算排名中..." />;
 
 
    if (loading) return <LoadingOverlay message="計算排名中..." />;

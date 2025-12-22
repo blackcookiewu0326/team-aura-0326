@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Icon } from '../Icons';
 
 export const Modal = ({ isOpen, onClose, title, children }) => {
